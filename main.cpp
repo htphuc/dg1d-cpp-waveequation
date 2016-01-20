@@ -4,12 +4,16 @@
 #include "ReferenceElement.h"
 using namespace std;
 
+vector<double> vecsum(vector <double> &A, vector<double> &B, int dimAB1, int dimAB2);
+
+vector<double> vecdiff(vector <double> &A, vector<double> &B, int dimAB1, int dimAB2);
+
 vector<double> matmul(vector<double>& A, vector<double>& B, int dimA1,
 		       int dimA2B1, int dimB2);
 
 void rightHandSide(vector<double>& thegrid, vector<double>& uh,
 		   vector<double>& rhs, int order, int numelem, int pdenum,
-		   double speed);
+		   int diffnum, double speed);
 
 int main()
 {
@@ -20,6 +24,7 @@ int main()
   int numelem = 20;
   int order = 16;
   int pdenum = 3;
+  int diffnum = 2;
   double sineamp = 1.0;
   double sinewavelength = 20.0;
   double sinephase = 0.;
@@ -65,7 +70,7 @@ int main()
     }
   }
 
-  rightHandSide(thegrid,uh,rhs, order, numelem, pdenum, speed);
+  rightHandSide(thegrid,uh,rhs, order, numelem, pdenum, diffnum, speed);
 
   //  int i=0;
   //  while()
@@ -95,82 +100,145 @@ int main()
 
 void rightHandSide(vector<double>& thegrid, vector<double>& uh,
 		   vector<double>& rhs, int order, int numelem, int pdenum,
-		   double speed){
+		   int diffnum, double speed){
 
-  //debug node and elemcount section NEXT TIME. WORKING on Char Flux. Should
-  // be zero in first sub time step.and zeroth time step. HERE.
-  vector<double> lambda((pdenum-1)*(pdenum-1),0.0);
-  lambda[0]=-speed;
-  lambda[3]=speed;
+  vector<double> Atrimmed(diffnum*diffnum,0.0);
+  Atrimmed[1]=-speed*speed;
+  Atrimmed[2]=-1.0;
+  
+  vector<double> lamb(diffnum*diffnum,0.0);
+  lamb[0]=-speed;
+  lamb[3]=speed;
 
-  vector<double> smatrix((pdenum-1)*(pdenum-1));
+  vector<double> smatrix(diffnum*diffnum);
   smatrix[0]=speed;
   smatrix[1]=-speed;
   smatrix[2]=1.0;
   smatrix[3]=1.0;
 
-  vector<double> sinv((pdenum-1)*(pdenum-1));
+  vector<double> sinv(diffnum*diffnum);
   sinv[0]=0.5/speed;
   sinv[1]=0.5;
   sinv[2]=-0.5/speed;
   sinv[3]=0.5;
 
   int pdebase = numelem*(order+1);
-  int indL = order;
-  int indR = 0;
+  int indL = 0;
+  int indR = order;
   vector<double> nx(2);
   nx[0]=-1.0;
   nx[1]=1.0;
+
+
   for(int elemnum=0; elemnum<numelem; elemnum++){
 
     int elemcount = elemnum*(order+1);
     
-    vector<double> uint((pdenum-1)*2);
-    vector<double> uext((pdenum-1)*2); // times 2 for left and right hand side
+    vector<double> uintL(diffnum);
+    vector<double> uintR(diffnum);
+    vector<double> uextL(diffnum);
+    vector<double> uextR(diffnum); 
 
-    uint[0]=uh[pdebase+elemcount+indL];
-    uint[1]=uh[pdebase+elemcount+indR];
-    uint[2]=uh[2*pdebase+elemcount+indL];
-    uint[3]=uh[2*pdebase+elemcount+indR];
-    
-    
-    if(elemnum<=0){
-      elemcount = (numelem-1)*(order+1);
+    uintL[0]=uh[pdebase+elemcount+indL];
+    uintR[0]=uh[pdebase+elemcount+indR];
+    uintL[1]=uh[2*pdebase+elemcount+indL];
+    uintR[1]=uh[2*pdebase+elemcount+indR];
+
+
+    int elemcount2;
+    if(elemnum>0){
+      elemcount2 =  (elemnum-1)*(order+1);
+    } else {
+      elemcount2=numelem*(order);
     }
-    if(elemnum>=numelem-1){
-      elemcount= 0;
+    uextL[0]=uh[pdebase+elemcount2+indR];
+    uextL[1]=uh[2*pdebase+elemcount2+indR];
+    
+    int elemcount3;
+    if(elemnum<numelem-1){
+      elemcount3 = (elemnum+1)*(order+1);
+    }else{
+      elemcount3 =0;
     }
-  
-    uext[0]=uh[pdebase+elemcount+indL];
-    uext[1]=uh[pdebase+elemcount+indR];
-    uext[2]=uh[2*pdebase+elemcount+indL];
-    uext[3]=uh[2*pdebase+elemcount+indR];
+    uextR[0]=uh[pdebase+elemcount3+indL];
+    uextR[1]=uh[2*pdebase+elemcount3+indL];
 
-    vector<double> nflux(2*(pdenum-1));
 
-    //what does 2 mean in the summation index? is it the pdenum-1 or is it
-    //the direction? or does the characteristic flux only work for
-    //waves propogating in two directions with opposite sign speeds? 
+    vector<double> nfluxL(diffnum);
+    vector<double> nfluxR(diffnum);
+    
     for(int j=0; j<2; j++){
-      vector<double> lambdaplus(2*(pdenum-1));
-      vector<double> lambdaminus(2*(pdenum-1));
-      for(int k=0; k<2; k++){
-	if(nx[j] * lambda[2 * j + k] < 0.0) {
-	  lambdaminus[2 * k + k] = nx[j] * lambda[2 * j + k];
+      vector<double> lambplus(2*diffnum);
+      vector<double> lambminus(2*diffnum);
+      for(int k=0; k<diffnum; k++){
+	if(nx[j] * lamb[2 * j + k] < 0.0) {
+	  lambminus[2 * k + k] = nx[j] * lamb[2 * j + k];
 	}else{
-	  lambdaplus[2 * k + k] = nx[j] * lambda[2 * j + k];
+	  lambplus[2 * k + k] = nx[j] * lamb[2 * j + k];
 	}
       }
+      if(j==0){
+	vector<double> tempL =  matmul(sinv, uintL,2,2,1);
+	vector<double> nfluxL1 = matmul(lambplus, tempL,2,2,1);
+	tempL = matmul(sinv, uextL,2,2,1);
+	vector<double> nfluxL2 = matmul(lambminus, tempL,2,2,1);
+	nfluxL = vecsum(nfluxL1, nfluxL2,2,1);
+	nfluxL = matmul(smatrix,nfluxL,2,2,1); //can I do this? nfluxL passed by reference
+      } else {
+	vector<double> tempR = matmul(sinv, uintR,2,2,1);
+	vector<double> nfluxR1 = matmul(lambplus, tempR,2,2,1);
+	tempR = matmul(sinv,uextR,2,2,1);
+	vector<double> nfluxR2 = matmul(lambminus, tempR,2,2,1);
+	nfluxR = vecsum(nfluxR1,nfluxR2, 2,1);
+	nfluxR = matmul(smatrix,nfluxR,2,2,1); //can I do this? nfluxR passed by reference
+      }
     }
+    vector<double> duL(diffnum);
+    vector<double> duR(diffnum);
+
+    vector<double> temp = matmul(Atrimmed,uintL,2,2,1);
+    duL=vecdiff(nx[0]*temp,nfluxL,2,1);//also HERE
+    temp = matmul(Atrimmed,uintR,2,2,1);
+    duR = vecdiff(nx[1]*temp,nfluxR,2,1); //HERE, need to implement multiplication
+    // for vectors so I can do nx[1]*temp or nx[0]*temp
+
+    cout << duL[0] << " " duL[1] << " " << duR[0] << " " << duR[1] << endl;
+    
   }
-  vector<double> ident = matmul(smatrix,sinv,2,2,2);
+  /*  vector<double> ident = matmul(smatrix,sinv,2,2,2);
   for(int i=0; i<4; i++){
     cout << ident[i] << " ";
-  }
+    }*/
   cout << endl;
+
+  
+
+  
 }
 
-vector<double> matmul(vector<double>& A, vector<double>& B, int dimA1,
+vector<double> vecsum(vector <double> &A, vector<double> &B, int dimAB1, int dimAB2){
+  vector<double> C(dimAB1*dimAB2);
+  
+  for(int i=0; i<dimAB1; i++){
+    for(int j=0; j<dimAB2; j++){
+      C[i*dimAB1+j]=A[i*dimAB1+j]+B[i*dimAB1+j];
+    }
+  }
+  return C;
+}
+
+vector<double> vecdiff(vector <double> &A, vector<double> &B, int dimAB1, int dimAB2){
+  vector<double> C(dimAB1*dimAB2);
+  
+  for(int i=0; i<dimAB1; i++){
+    for(int j=0; j<dimAB2; j++){
+      C[i*dimAB1+j]=A[i*dimAB1+j]-B[i*dimAB1+j];
+    }
+  }
+  return C;
+}
+
+vector<double> matmul(vector<double> &A, vector<double> &B, int dimA1,
 		       int dimA2B1, int dimB2){
   vector<double> C(dimA1*dimB2);
   
@@ -186,3 +254,6 @@ vector<double> matmul(vector<double>& A, vector<double>& B, int dimA1,
   return C;
 
 }
+
+
+  

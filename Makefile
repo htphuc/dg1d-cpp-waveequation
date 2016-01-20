@@ -1,4 +1,4 @@
-FLAGS = -std=c++11 -lm
+FLAGS = -std=c++11 -lm -g
 CXX = g++
 IDIR = -I/home/sdorsher  -I/home/sdorsher/tnt -I/home/sdorsher/jama
 
