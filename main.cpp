@@ -8,6 +8,8 @@ vector<double> vecsum(vector <double> &A, vector<double> &B, int dimAB1, int dim
 
 vector<double> vecdiff(vector <double> &A, vector<double> &B, int dimAB1, int dimAB2);
 
+vector<double> scalarmult(double s, vector<double> &A, int dimA1, int dimA2);
+
 vector<double> matmul(vector<double>& A, vector<double>& B, int dimA1,
 		       int dimA2B1, int dimB2);
 
@@ -106,21 +108,24 @@ void rightHandSide(vector<double>& thegrid, vector<double>& uh,
   Atrimmed[1]=-speed*speed;
   Atrimmed[2]=-1.0;
   
-  vector<double> lamb(diffnum*diffnum,0.0);
+  vector<double> lamb(diffnum*diffnum);
   lamb[0]=-speed;
+  lamb[1]=speed;
+  lamb[2]=-speed;
   lamb[3]=speed;
 
   vector<double> smatrix(diffnum*diffnum);
-  smatrix[0]=speed;
-  smatrix[1]=-speed;
-  smatrix[2]=1.0;
-  smatrix[3]=1.0;
+  smatrix[0]=-sqrt(1./2.)*speed;
+  smatrix[1]=-sqrt(1./2.)*speed;
+  smatrix[2]=-sqrt(1./2.);
+  smatrix[3]=sqrt(1./2.);
 
+  //CHECK THIS WITH MATHEMATICA WHEN I START USING SPEED NOT EQUAL TO ONE
   vector<double> sinv(diffnum*diffnum);
-  sinv[0]=0.5/speed;
-  sinv[1]=0.5;
-  sinv[2]=-0.5/speed;
-  sinv[3]=0.5;
+  sinv[0]=-sqrt(1./2.);
+  sinv[1]=-sqrt(1./2.)/speed;
+  sinv[2]=-sqrt(1./2.);
+  sinv[3]=sqrt(1./2.)/speed;
 
   int pdebase = numelem*(order+1);
   int indL = 0;
@@ -131,6 +136,9 @@ void rightHandSide(vector<double>& thegrid, vector<double>& uh,
 
 
   for(int elemnum=0; elemnum<numelem; elemnum++){
+    vector<double> nfluxL(diffnum);
+    vector<double> nfluxR(diffnum);
+    
 
     int elemcount = elemnum*(order+1);
     
@@ -163,9 +171,6 @@ void rightHandSide(vector<double>& thegrid, vector<double>& uh,
     uextR[0]=uh[pdebase+elemcount3+indL];
     uextR[1]=uh[2*pdebase+elemcount3+indL];
 
-
-    vector<double> nfluxL(diffnum);
-    vector<double> nfluxR(diffnum);
     
     for(int j=0; j<2; j++){
       vector<double> lambplus(2*diffnum);
@@ -182,38 +187,48 @@ void rightHandSide(vector<double>& thegrid, vector<double>& uh,
 	vector<double> nfluxL1 = matmul(lambplus, tempL,2,2,1);
 	tempL = matmul(sinv, uextL,2,2,1);
 	vector<double> nfluxL2 = matmul(lambminus, tempL,2,2,1);
-	nfluxL = vecsum(nfluxL1, nfluxL2,2,1);
-	nfluxL = matmul(smatrix,nfluxL,2,2,1); //can I do this? nfluxL passed by reference
+	
+	vector<double> nfluxL3 = vecsum(nfluxL1, nfluxL2,2,1);
+	nfluxL = matmul(smatrix,nfluxL3,2,2,1); 
+
+
       } else {
 	vector<double> tempR = matmul(sinv, uintR,2,2,1);
 	vector<double> nfluxR1 = matmul(lambplus, tempR,2,2,1);
 	tempR = matmul(sinv,uextR,2,2,1);
 	vector<double> nfluxR2 = matmul(lambminus, tempR,2,2,1);
-	nfluxR = vecsum(nfluxR1,nfluxR2, 2,1);
-	nfluxR = matmul(smatrix,nfluxR,2,2,1); //can I do this? nfluxR passed by reference
+	vector<double> nfluxR3 = vecsum(nfluxR1,nfluxR2, 2,1);
+	nfluxR = matmul(smatrix,nfluxR3,2,2,1); 
       }
     }
+
+    //    cout << nfluxL[0] << " "<< nfluxL[1] <<" " << nfluxR[0] << " " <<nfluxR[1] << endl;
     vector<double> duL(diffnum);
     vector<double> duR(diffnum);
 
     vector<double> temp = matmul(Atrimmed,uintL,2,2,1);
-    duL=vecdiff(nx[0]*temp,nfluxL,2,1);//also HERE
+    vector<double> temp2 = scalarmult(nx[0], temp, 2, 1);
+    duL=vecdiff(temp2,nfluxL,2,1);
     temp = matmul(Atrimmed,uintR,2,2,1);
-    duR = vecdiff(nx[1]*temp,nfluxR,2,1); //HERE, need to implement multiplication
-    // for vectors so I can do nx[1]*temp or nx[0]*temp
+    temp2 = scalarmult(nx[1], temp, 2, 1);
+    duR = vecdiff(temp2,nfluxR,2,1); 
 
-    cout << duL[0] << " " duL[1] << " " << duR[0] << " " << duR[1] << endl;
-    
+    cout << duL[0] << " " << duL[1] << " " << duR[0] << " " << duR[1] << endl;
+    //du's should be zero after first call to rhs-- checks out to within
+    // roundoff
   }
   /*  vector<double> ident = matmul(smatrix,sinv,2,2,2);
   for(int i=0; i<4; i++){
     cout << ident[i] << " ";
-    }*/
+  }
   cout << endl;
-
-  
-
-  
+  vector<double> temp10 = matmul(lamb,sinv,2,2,2);
+  vector<double> AT = matmul(smatrix,temp10,2,2,2);
+  for (int i=0; i<4; i++){
+      cout << AT[i] << " " ;
+    }
+  cout << endl;
+  */
 }
 
 vector<double> vecsum(vector <double> &A, vector<double> &B, int dimAB1, int dimAB2){
@@ -221,7 +236,7 @@ vector<double> vecsum(vector <double> &A, vector<double> &B, int dimAB1, int dim
   
   for(int i=0; i<dimAB1; i++){
     for(int j=0; j<dimAB2; j++){
-      C[i*dimAB1+j]=A[i*dimAB1+j]+B[i*dimAB1+j];
+      C[j*dimAB1+i]=A[j*dimAB1+i]+B[j*dimAB1+i];
     }
   }
   return C;
@@ -232,7 +247,18 @@ vector<double> vecdiff(vector <double> &A, vector<double> &B, int dimAB1, int di
   
   for(int i=0; i<dimAB1; i++){
     for(int j=0; j<dimAB2; j++){
-      C[i*dimAB1+j]=A[i*dimAB1+j]-B[i*dimAB1+j];
+      C[j*dimAB1+i]=A[j*dimAB1+i]-B[j*dimAB1+i];
+    }
+  }
+  return C;
+}
+
+vector<double> scalarmult(double s, vector<double> &A, int dimA1, int dimA2){
+  vector<double> C(dimA1*dimA2);
+  
+  for(int i=0; i<dimA1; i++){
+    for(int j=0; j<dimA2; j++){
+      C[j*dimA1+i]=A[j*dimA1+i]*s;
     }
   }
   return C;
